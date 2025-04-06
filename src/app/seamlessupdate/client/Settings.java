@@ -9,6 +9,7 @@ import android.os.Bundle;
 import android.os.UserManager;
 import android.util.Log;
 import android.view.MenuItem;
+import android.app.AlertDialog;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -83,6 +84,13 @@ public class Settings extends CollapsingToolbarBaseActivity {
             implements SharedPreferences.OnSharedPreferenceChangeListener {
         private static String TAG = "SettingsFragment";
 
+        private void showAlertDialogForPendingReboot(final Context context) {
+            new AlertDialog.Builder(context)
+                .setTitle(android.R.string.dialog_alert_title)
+                .setMessage(R.string.alert_pending_reboot)
+                .show();
+        }
+
         @Override
         public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
             getPreferenceManager().setStorageDeviceProtected();
@@ -100,6 +108,8 @@ public class Settings extends CollapsingToolbarBaseActivity {
                     intent.putExtra(Service.INTENT_EXTRA_IS_USER_INITIATED, true);
                     intent.putExtra(Service.INTENT_EXTRA_NETWORK, network);
                     context.startForegroundService(intent);
+                } else {
+                    showAlertDialogForPendingReboot(context);
                 }
                 return true;
             };
