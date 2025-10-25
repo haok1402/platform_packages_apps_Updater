@@ -6,13 +6,23 @@ android_app {
         "androidx.appcompat_appcompat",
         "androidx.preference_preference",
         "SettingsLibCollapsingToolbarBaseActivity",
+        "setupcompat",
+        "setupdesign",
     ],
     platform_apis: true,
     privileged: true,
     required: [
+        "etc_default-permissions_app.seamlessupdate.client.xml",
         "etc_permissions_app.seamlessupdate.client.xml",
         "etc_sysconfig_app.seamlessupdate.client.xml",
     ]
+}
+
+prebuilt_etc {
+    name: "etc_default-permissions_app.seamlessupdate.client.xml",
+    src: "etc/default-permissions/app.seamlessupdate.client.xml",
+    sub_dir: "default-permissions",
+    filename_from_src: true,
 }
 
 prebuilt_etc {

@@ -17,11 +17,15 @@ import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.PreferenceManager;
 import androidx.preference.Preference;
 import androidx.preference.ListPreference;
+import androidx.preference.SwitchPreference;
 
 import com.android.settingslib.collapsingtoolbar.CollapsingToolbarBaseActivity;
 
+import static java.util.Objects.requireNonNull;
+
 public class Settings extends CollapsingToolbarBaseActivity {
     private static final String KEY_CHANNEL = "channel";
+    static final String KEY_USE_SECURITY_PREVIEW_CHANNEL = "use_security_preview_channel";
     private static final String KEY_NETWORK_TYPE = "network_type";
     private static final String KEY_BATTERY_NOT_LOW = "battery_not_low";
     private static final String KEY_REQUIRES_CHARGING = "requires_charging";
@@ -35,8 +39,25 @@ public class Settings extends CollapsingToolbarBaseActivity {
     }
 
     static String getChannel(final Context context) {
-        return getPreferences(context).getString(KEY_CHANNEL,
+        String base = getPreferences(context).getString(KEY_CHANNEL,
                 context.getString(R.string.channel_default));
+        if (shouldUseSecurityPreviewChannel(context)) {
+            return base + "-security-preview";
+        } else {
+            return base;
+        }
+    }
+
+    static boolean shouldUseSecurityPreviewChannel(final Context context) {
+        int val = getPreferences(context).getInt(KEY_USE_SECURITY_PREVIEW_CHANNEL, -1);
+        switch (val) {
+            case 0:
+                return false;
+            case 1:
+                return true;
+            default:
+                return false;
+        }
     }
 
     static int getNetworkType(final Context context) {
@@ -96,7 +117,7 @@ public class Settings extends CollapsingToolbarBaseActivity {
             getPreferenceManager().setStorageDeviceProtected();
             setPreferencesFromResource(R.xml.settings, rootKey);
 
-            Preference.OnPreferenceClickListener clickListener = preference -> {
+            requirePreference(KEY_CHECK_FOR_UPDATES).setOnPreferenceClickListener(pref -> {
                 final Context context = requireContext();
                 if (!getPreferences(context).getBoolean(KEY_WAITING_FOR_REBOOT, false)) {
                     final ConnectivityManager connectivityManager = context.getSystemService(ConnectivityManager.class);
@@ -112,24 +133,41 @@ public class Settings extends CollapsingToolbarBaseActivity {
                     showAlertDialogForPendingReboot(context);
                 }
                 return true;
-            };
-            final Preference checkForUpdates = findPreference(KEY_CHECK_FOR_UPDATES);
-            if (checkForUpdates != null) {
-                checkForUpdates.setOnPreferenceClickListener(clickListener);
-            }
+            });
 
-            Preference.OnPreferenceChangeListener changeListener = (preference, newValue) -> {
+            requirePreference(KEY_NETWORK_TYPE).setOnPreferenceChangeListener((pref, newValue) -> {
                 final int value = Integer.parseInt((String) newValue);
                 getPreferences(requireContext()).edit().putInt(KEY_NETWORK_TYPE, value).apply();
                 if (!getPreferences(requireContext()).getBoolean(KEY_WAITING_FOR_REBOOT, false)) {
                     PeriodicJob.schedule(requireContext());
                 }
                 return true;
-            };
-            final Preference networkType = findPreference(KEY_NETWORK_TYPE);
-            if (networkType != null) {
-                networkType.setOnPreferenceChangeListener(changeListener);
-            }
+            });
+
+            updateAndReturnSecurityPreviewPreference().setOnPreferenceChangeListener((pref, newValue) -> {
+                // This preference is intentionally marked as persistent=false in XML to avoid
+                // automatic clobbering of the default value. Handle persistence manually.
+                Context context = requireContext();
+                SharedPreferences prefs = getPreferences(context);
+                boolean res = prefs.edit()
+                        .putInt(KEY_USE_SECURITY_PREVIEW_CHANNEL, ((boolean) newValue) ? 1 : 0)
+                        .commit();
+                if (res) {
+                    if (!prefs.getBoolean(KEY_WAITING_FOR_REBOOT, false)) {
+                        PeriodicJob.schedule(requireContext());
+                    }
+                    NotificationHandler.cancelSetSecurityPreviewNotification(requireContext());
+                }
+                return res;
+            });
+        }
+
+        private SwitchPreference updateAndReturnSecurityPreviewPreference() {
+            final SwitchPreference useSecurityPreviewChannel =
+                    requirePreference(KEY_USE_SECURITY_PREVIEW_CHANNEL);
+            final boolean newChecked = shouldUseSecurityPreviewChannel(requireContext());
+            useSecurityPreviewChannel.setChecked(newChecked);
+            return useSecurityPreviewChannel;
         }
 
         @Override
@@ -156,12 +194,19 @@ public class Settings extends CollapsingToolbarBaseActivity {
             getPreferenceManager().getSharedPreferences().registerOnSharedPreferenceChangeListener(this);
             final ListPreference networkType = (ListPreference) findPreference(KEY_NETWORK_TYPE);
             networkType.setValue(Integer.toString(getNetworkType(requireContext())));
+            // User can open updater settings and then open security preview settings from the
+            // notification.
+            updateAndReturnSecurityPreviewPreference();
         }
 
         @Override
         public void onPause() {
             super.onPause();
             getPreferenceManager().getSharedPreferences().unregisterOnSharedPreferenceChangeListener(this);
+        }
+
+        private <T extends Preference> T requirePreference(String key) {
+            return requireNonNull(findPreference(key));
         }
     }
 }
